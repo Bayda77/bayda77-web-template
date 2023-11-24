@@ -1,0 +1,189 @@
+version: 2.1
+
+orbs:
+  jira: nutrien/ddc-jira-connect@1
+  ddc: nutrien/ddc-common@2
+  sonarqube: nutrien/ddc-sonarqube@1
+
+aliases:
+  - &dev-filter
+    branches:
+      ignore:
+        - master
+        - main
+  - &staging-filters
+    tags:
+      only: /^QA-v(\d+\.)?(\d+\.)?(\*|\d+)$/
+    branches:
+      ignore: /.*/
+  - &uat-filters
+    tags:
+      only: /^UAT-v(\d+\.)?(\d+\.)?(\*|\d+)$/
+    branches:
+      ignore: /.*/
+  - &prod-filters
+    tags:
+      only: /^v(\d+\.)?(\d+\.)?(\*|\d+)$/
+    branches:
+      ignore: /.*/
+
+executors:
+  default:
+    docker:
+      - image: cimg/node:14.15.4
+    resource_class: medium
+
+jobs:
+  build:
+    executor: default
+    steps:
+      - checkout
+      - ddc/configure-npmrc
+      - ddc/install-node-packages:
+          app-dir: .
+      - ddc/install-node-packages:
+          app-dir: ./infrastructure
+      - run:
+          name: Build
+          command: npm run build:$ENV
+      - run:
+          name: Build CDK
+          working_directory: ./infrastructure
+          command: npm run build
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+            - infrastructure/bin
+  deploy:
+    executor: default
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - ddc/get-aws-token
+      - ddc/configure-npmrc
+      - ddc/install-node-packages:
+          app-dir: ./infrastructure
+      - run:
+          name: Deploy
+          working_directory: ./infrastructure
+          command: echo "uncomment deploy -->" # npm run deploy
+          no_output_timeout: 30m
+
+workflows:
+  ci-master:
+    jobs:
+      - build:
+          context: ddc-hello
+          filters:
+            branches:
+              only:
+                - master
+                - main
+                - /RC[0-9]+/
+      - sonarqube/fe-scan:
+          context: sonarqube
+          requires:
+            - build
+
+  ci-dev:
+    jobs:
+      - build:
+          name: build [dev]
+          context: ddc-hello
+          post-steps:
+            - jira/notify:
+                environment_type: development
+                job_type: build
+          filters: *dev-filter
+      - sonarqube/fe-scan:
+          context: sonarqube
+          requires:
+            - build [dev]
+      - ddc/gitleaks:
+          filters: *dev-filter
+      - ddc/cfn-guard:
+          context: ddc-hello
+          app-dir: ./infrastructure
+          cfn-rules-version: v3
+          attach-workspace: true
+          requires:
+            - build [dev]
+      - deploy:
+          name: deploy [dev]
+          context: ddc-dev
+          post-steps:
+            - jira/notify:
+                environment: ${ENV}
+                environment_type: development
+                job_type: deployment
+          requires:
+            - build [dev]
+            - ddc/gitleaks
+
+  ci-staging:
+    jobs:
+      - build:
+          context: ddc-staging
+          post-steps:
+            - jira/notify:
+                environment_type: staging
+                job_type: build
+          filters: *staging-filters
+      - deploy:
+          context: ddc-staging
+          post-steps:
+            - jira/notify:
+                environment: ${ENV}
+                environment_type: staging
+                job_type: deployment
+          filters: *staging-filters
+          requires:
+            - build
+
+  ci-uat:
+    jobs:
+      - build:
+          context: ddc-uat
+          post-steps:
+            - jira/notify:
+                environment_type: testing
+                job_type: build
+          filters: *uat-filters
+      - deploy:
+          context: ddc-uat
+          post-steps:
+            - jira/notify:
+                environment: ${ENV}
+                environment_type: testing
+                job_type: deployment
+          filters: *uat-filters
+          requires:
+            - build
+
+  ci-prod-build-deploy:
+    jobs:
+      - build:
+          context: ddc-prod
+          post-steps:
+            - jira/notify:
+                environment_type: production
+                job_type: build
+          filters: *prod-filters
+      - approve-deploy:
+          name: Approve promote to Prod
+          type: approval
+          filters: *prod-filters
+          requires:
+            - build
+      - deploy:
+          context: ddc-prod
+          post-steps:
+            - jira/notify:
+                environment: ${ENV}
+                environment_type: production
+                job_type: deployment
+          filters: *prod-filters
+          requires:
+            - Approve promote to Prod

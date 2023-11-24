@@ -1,0 +1,28 @@
+{
+  "name": "infrastructure",
+  "version": "0.1.0",
+  "bin": {
+    "nutrien.cxp.app.infrastructure": "./bin/infrastructure.js"
+  },
+  "scripts": {
+    "clean": "rimraf bin && rimraf cdk.out",
+    "build": "npm run clean && tsc",
+    "watch": "tsc -w",
+    "diff": "npm run build && cdk diff",
+    "deploy": "cdk deploy -v -c env=${ENV}",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.45",
+    "aws-cdk": "^2.94.0",
+    "aws-cdk-lib": "^2.94.0",
+    "constructs": "^10.2.70",
+    "rimraf": "^3.0.2",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@nutrien/ddc-cdk-lib": "^1.10.0",
+    "lodash.merge": "^4.6.2"
+  }
+}

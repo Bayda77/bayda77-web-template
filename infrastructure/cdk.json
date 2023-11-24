@@ -1,0 +1,5 @@
+{
+  "app": "npx ts-node bin/infrastructure/lib/infrastructure.js",
+  "requireApproval": "never",
+  "progress": "events"
+}

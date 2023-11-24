@@ -1,0 +1,16 @@
+{
+  "presets": ["@babel/preset-env", "@babel/preset-react", "@babel/preset-typescript"],
+  "plugins": [
+    "@babel/proposal-class-properties",
+    "@babel/proposal-object-rest-spread",
+    [
+      "i18next-extract",
+      {
+        "locales": ["en"],
+        "keySeparator": null,
+        "keyAsDefaultValue": ["en"],
+        "outputPath": "public/locales/{{locale}}/{{ns}}.json"
+      }
+    ]
+  ]
+}
